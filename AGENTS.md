@@ -11,15 +11,15 @@ Python 3.11+, python-telegram-bot 21.6, Anthropic SDK, notion-client, pytest, Ra
 
 ## Etat actuel
 Projet initialise avec configuration, dependances, bot, clients IA/Notion et tests unitaires.
-Les tests passent avec `py -m pytest tests/ -v` : 17 tests.
+Les tests passent avec `py -m pytest tests/ -v` : 20 tests.
 Base Notion creee : `https://www.notion.so/7107986c47cc40e38e0923c1138bc1b9`.
 Les proprietes Notion utilisent des noms ASCII : `A faire`, `Categorie`, `Sous-categorie`.
 Categories : `Conferences`, `Social`, `Code`, `Pro`; sous-categories : `TSE`, `Labo`.
-Le dossier n'est pas encore initialise comme depot Git.
+Depot GitHub : `https://github.com/alan-julien/second-brain`.
 Le fichier `.env` est configure et le bot a deja ete lance en local.
 
 ## Prochaines etapes
-1. Creer `.env` depuis `.env.example` avec les tokens Telegram, Anthropic et Notion.
-2. Partager la base Notion avec l'integration Notion du bot.
-3. Lancer `py bot.py` et tester la capture de tache dans Telegram.
-4. Initialiser Git/GitHub puis connecter Railway pour le deploiement.
+1. Creer un projet Railway depuis le repo GitHub.
+2. Ajouter les variables d'environnement dans Railway.
+3. Verifier les logs Railway jusqu'a `Bot demarre`.
+4. Arreter le bot local pour eviter deux instances Telegram.

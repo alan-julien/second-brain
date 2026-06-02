@@ -36,11 +36,13 @@ Format requis :
 }}
 
 Regles :
-- intent=new_task si le message decrit quelque chose a faire
+- intent=new_task si le message decrit quelque chose a faire (nouvelle tache a creer)
 - intent=query si le message pose une question sur les taches existantes
 - intent=complete_task si l utilisateur veut marquer une tache comme terminee/faite/done
 - intent=update_task si l utilisateur veut modifier un champ d une tache existante (date, importance, categorie)
-- due_date : convertis les dates relatives en YYYY-MM-DD. Aujourd'hui = {today}
+  -> Exemples : "mets au 15 septembre", "tache X au 15", "met a jour X", "change la date de X", "X au 15 septembre"
+  -> Si le message mentionne un nom propre ou fragment de tache existante avec une date ou valeur, preferer update_task a new_task
+- due_date : convertis les dates relatives en YYYY-MM-DD. Aujourd'hui = {today}. Si un mois est precise, l utiliser ; sinon prendre le mois courant.
 - importance : deduis du contexte ("urgent" -> Haute, "quand possible" -> Basse)
 - draft est toujours present meme si intent != new_task (null pour tous les champs dans ce cas)"""
 

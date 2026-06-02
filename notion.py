@@ -25,6 +25,38 @@ class NotionClient:
             properties=properties,
         )
 
+    def find_task_by_name(self, name: str) -> str | None:
+        response = self._client.databases.query(
+            database_id=self._db_id,
+            filter={"property": "Statut", "select": {"does_not_equal": "Fait"}},
+        )
+        name_lower = name.lower()
+        for page in response["results"]:
+            task_name = _title_value(page["properties"]["Nom"]).lower()
+            if name_lower in task_name:
+                return page["id"]
+        return None
+
+    def complete_task(self, page_id: str) -> None:
+        self._client.pages.update(
+            page_id=page_id,
+            properties={"Statut": {"select": {"name": "Fait"}}},
+        )
+
+    def update_task_field(self, page_id: str, field: str, value: str) -> None:
+        field_map = {
+            "due_date": ("Date limite", {"date": {"start": value}}),
+            "importance": ("Importance", {"select": {"name": value}}),
+            "category": ("Categorie", {"select": {"name": value}}),
+        }
+        if field not in field_map:
+            return
+        notion_field, notion_value = field_map[field]
+        self._client.pages.update(
+            page_id=page_id,
+            properties={notion_field: notion_value},
+        )
+
     def query_active_tasks(self) -> list[dict]:
         response = self._client.databases.query(
             database_id=self._db_id,

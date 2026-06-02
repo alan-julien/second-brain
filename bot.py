@@ -55,6 +55,28 @@ async def _handle_new_message(update: Update, text: str, user_id: int) -> None:
         await update.message.reply_text(question)
         return
 
+    if result.get("intent") == "complete_task":
+        task_name = result.get("task_name") or ""
+        page_id = notion_client.find_task_by_name(task_name)
+        if page_id:
+            notion_client.complete_task(page_id)
+            await update.message.reply_text(f"Tache \"{task_name}\" marquee comme terminee.")
+        else:
+            await update.message.reply_text(f"Je n'ai pas trouve de tache correspondant a \"{task_name}\".")
+        return
+
+    if result.get("intent") == "update_task":
+        task_name = result.get("task_name") or ""
+        field = result.get("update_field") or ""
+        value = result.get("update_value") or ""
+        page_id = notion_client.find_task_by_name(task_name)
+        if page_id and field and value:
+            notion_client.update_task_field(page_id, field, value)
+            await update.message.reply_text(f"Tache \"{task_name}\" mise a jour.")
+        else:
+            await update.message.reply_text(f"Je n'ai pas pu effectuer la modification sur \"{task_name}\".")
+        return
+
     tasks = notion_client.query_active_tasks()
     answer = ai_client.answer_query(result.get("query") or text, tasks)
     await update.message.reply_text(answer)

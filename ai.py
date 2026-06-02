@@ -21,7 +21,7 @@ Analyse le message et retourne UNIQUEMENT du JSON valide, sans texte avant ou ap
 
 Format requis :
 {{
-  "intent": "new_task" ou "query",
+  "intent": "new_task" ou "query" ou "complete_task" ou "update_task",
   "draft": {{
     "name": "titre concis ou null",
     "importance": "Haute" ou "Moyenne" ou "Basse" ou null,
@@ -29,15 +29,20 @@ Format requis :
     "category": "Conferences" ou "Social" ou "Code" ou "Pro" ou null,
     "subcategory": "TSE" ou "Labo" ou null
   }},
+  "task_name": "nom ou fragment de la tache cible (pour complete_task et update_task), sinon null",
+  "update_field": "due_date" ou "importance" ou "category" ou null,
+  "update_value": "nouvelle valeur ou null",
   "query": "question reformulee si intent=query, sinon null"
 }}
 
 Regles :
 - intent=new_task si le message decrit quelque chose a faire
 - intent=query si le message pose une question sur les taches existantes
+- intent=complete_task si l utilisateur veut marquer une tache comme terminee/faite/done
+- intent=update_task si l utilisateur veut modifier un champ d une tache existante (date, importance, categorie)
 - due_date : convertis les dates relatives en YYYY-MM-DD. Aujourd'hui = {today}
 - importance : deduis du contexte ("urgent" -> Haute, "quand possible" -> Basse)
-- draft est toujours present meme si intent=query (null pour tous les champs)"""
+- draft est toujours present meme si intent != new_task (null pour tous les champs dans ce cas)"""
 
 DIGEST_SYSTEM = """Tu generes un digest matinal de taches. Sois concis.
 Commence par "Bonjour - voici tes taches :"

@@ -25,18 +25,6 @@ class NotionClient:
             properties=properties,
         )
 
-    def find_task_by_name(self, name: str) -> str | None:
-        response = self._client.databases.query(
-            database_id=self._db_id,
-            filter={"property": "Statut", "select": {"does_not_equal": "Fait"}},
-        )
-        name_lower = name.lower()
-        for page in response["results"]:
-            task_name = _title_value(page["properties"]["Nom"]).lower()
-            if name_lower in task_name:
-                return page["id"]
-        return None
-
     def complete_task(self, page_id: str) -> None:
         self._client.pages.update(
             page_id=page_id,
@@ -68,6 +56,7 @@ class NotionClient:
     def _page_to_dict(self, page: dict) -> dict:
         props = page["properties"]
         return {
+            "id": page["id"],
             "nom": _title_value(props["Nom"]),
             "statut": _select_value(props["Statut"]) or "",
             "importance": _select_value(props["Importance"]) or "",

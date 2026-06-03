@@ -1,69 +1,78 @@
 import json
 import re
 from datetime import date
-from typing import Optional
 
 from anthropic import Anthropic
 
-from conversation import TaskDraft
+
+# Valeurs autorisees cote Notion. Servent de garde-fou : l'IA est invitee a s'y
+# tenir, et bot.py rejette toute valeur hors de ces listes avant ecriture.
+IMPORTANCES = ["Haute", "Moyenne", "Basse"]
+CATEGORIES = ["Conferences", "Social", "Code", "Pro"]
+SUBCATEGORIES = ["TSE", "Labo"]
 
 
-QUESTIONS = {
-    "name": "Quelle est la tache ?",
-    "importance": "Quelle importance ? (Haute / Moyenne / Basse)",
-    "due_date": "Une date limite ? (ou 'aucune')",
-    "category": "Une categorie ? (Conferences / Social / Code / Pro - ou 'aucune')",
-    "subcategory": "Une sous-categorie ? (TSE / Labo - ou 'aucune')",
-}
+DECIDE_PROMPT = """Tu es un assistant de gestion de taches personnel, chaleureux et naturel.
+Tu paries avec l'utilisateur comme un humain intelligent, pas comme un formulaire.
 
-CLASSIFY_PROMPT = """Tu es un assistant de gestion de taches personnel.
-Analyse le message et retourne UNIQUEMENT du JSON valide, sans texte avant ou apres.
+On te fournit : le message de l'utilisateur, la liste numerotee de ses taches actives, et
+eventuellement un contexte de conversation en cours (une demande precedente pas encore finalisee).
 
-Format requis :
+Tu dois retourner UNIQUEMENT du JSON valide, sans texte avant ou apres :
 {{
-  "intent": "new_task" ou "query" ou "complete_task" ou "update_task",
+  "intent": "new_task" | "complete_task" | "update_task" | "query" | "smalltalk",
+  "target_ref": <numero de la tache visee dans la liste fournie, ou null>,
   "draft": {{
     "name": "titre concis ou null",
-    "importance": "Haute" ou "Moyenne" ou "Basse" ou null,
-    "due_date": "YYYY-MM-DD ou null",
-    "category": "Conferences" ou "Social" ou "Code" ou "Pro" ou null,
-    "subcategory": "TSE" ou "Labo" ou null
+    "importance": "Haute" | "Moyenne" | "Basse" | null,
+    "due_date": "AAAA-MM-JJ ou null",
+    "category": "Conferences" | "Social" | "Code" | "Pro" | null,
+    "subcategory": "TSE" | "Labo" | null
   }},
-  "task_name": "nom ou fragment de la tache cible (pour complete_task et update_task), sinon null",
-  "update_field": "due_date" ou "importance" ou "category" ou null,
-  "update_value": "nouvelle valeur ou null",
-  "query": "question reformulee si intent=query, sinon null"
+  "update_field": "due_date" | "importance" | "category" | null,
+  "update_value": "nouvelle valeur normalisee ou null",
+  "ready": true | false,
+  "reply": "message naturel en francais a envoyer a l'utilisateur"
 }}
 
-Regles :
-- intent=new_task si le message decrit quelque chose a faire (nouvelle tache a creer)
-- intent=query si le message pose une question sur les taches existantes
-- intent=complete_task si l utilisateur veut marquer une tache comme terminee/faite/done
-- intent=update_task si l utilisateur veut modifier un champ d une tache existante (date, importance, categorie)
-  -> Exemples : "mets au 15 septembre", "tache X au 15", "met a jour X", "change la date de X", "X au 15 septembre"
-  -> Si le message mentionne un nom propre ou fragment de tache existante avec une date ou valeur, preferer update_task a new_task
-- due_date : convertis les dates relatives en YYYY-MM-DD. Aujourd'hui = {today}. Si un mois est precise, l utiliser ; sinon prendre le mois courant.
-- importance : deduis du contexte ("urgent" -> Haute, "quand possible" -> Basse)
-- draft est toujours present meme si intent != new_task (null pour tous les champs dans ce cas)"""
+Intentions :
+- new_task : l'utilisateur decrit quelque chose a faire (tache a creer).
+- complete_task : il veut marquer une tache existante comme terminee/faite.
+- update_task : il veut modifier un champ d'une tache existante (date, importance, categorie).
+- query : il pose une question sur ses taches -> reponds directement dans "reply" a partir de la liste fournie.
+- smalltalk : salutation, remerciement, hors-sujet -> reponds gentiment dans "reply".
+
+Choix de la tache cible (complete_task / update_task) :
+- Choisis le numero dans la liste fournie meme si l'utilisateur abrege ("StJean" = "Saint-Jean"),
+  fait une faute, ou reformule. Tu raisonnes sur le SENS, pas sur les caracteres exacts.
+- Si AUCUNE tache ne correspond raisonnablement -> target_ref=null, ready=false, et demande gentiment
+  dans "reply" (propose les titres proches s'il y en a).
+- Si PLUSIEURS taches correspondent -> target_ref=null, ready=false, et demande laquelle dans "reply"
+  en listant les candidates.
+
+Champ "ready" :
+- true seulement si tu as tout ce qu'il faut pour agir sans risque (tache cible certaine pour
+  complete/update ; au minimum un nom et une importance pour new_task).
+- false si une info manque ou en cas de doute : pose alors UNE question claire dans "reply".
+
+Normalisation :
+- due_date : convertis les dates relatives en AAAA-MM-JJ. Aujourd'hui = {today}.
+- importance : deduis du contexte ("urgent" -> Haute, "quand tu peux" -> Basse). Valeurs : {importances}.
+- category : parmi {categories}. subcategory (si category=Pro) : parmi {subcategories}.
+- Ne force pas une categorie/date si l'utilisateur n'en donne pas : laisse null, ce n'est pas bloquant.
+
+Contexte de conversation en cours (a fusionner avec le nouveau message si present) :
+{pending}
+
+Liste des taches actives (numero | titre | importance | date | categorie) :
+{tasks}
+
+"reply" doit TOUJOURS etre rempli : confirmation de l'action, question, ou reponse. Concis (<= 4 lignes)."""
 
 DIGEST_SYSTEM = """Tu generes un digest matinal de taches. Sois concis.
 Commence par "Bonjour - voici tes taches :"
 Maximum 5 taches, priorisees par importance puis date limite.
 Reponds uniquement avec le digest, en francais."""
-
-
-def get_next_question(draft: TaskDraft) -> Optional[tuple[str, str]]:
-    if not draft.name:
-        return ("name", QUESTIONS["name"])
-    if not draft.importance:
-        return ("importance", QUESTIONS["importance"])
-    if draft.due_date is None:
-        return ("due_date", QUESTIONS["due_date"])
-    if draft.category is None:
-        return ("category", QUESTIONS["category"])
-    if draft.category == "Pro" and draft.subcategory is None:
-        return ("subcategory", QUESTIONS["subcategory"])
-    return None
 
 
 def _parse_json_response(text: str) -> dict:
@@ -74,59 +83,46 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(stripped)
 
 
-class AiClient:
-    def __init__(self, api_key: str):
-        self._client = Anthropic(api_key=api_key)
+def _format_tasks(tasks: list[dict]) -> str:
+    """Construit la liste numerotee donnee a l'IA. Le numero (1-based) est la
+    reference stable que l'IA renverra dans target_ref ; bot.py la remappe vers
+    l'ID Notion reel. L'IA ne voit jamais les ID bruts (qu'elle hallucinerait)."""
+    if not tasks:
+        return "(aucune tache active)"
+    lines = []
+    for i, task in enumerate(tasks, start=1):
+        date_part = task.get("date_limite") or "sans date"
+        cat_part = task.get("categorie") or "sans categorie"
+        lines.append(
+            f"{i} | {task.get('nom', '')} | {task.get('importance', '')} | {date_part} | {cat_part}"
+        )
+    return "\n".join(lines)
 
-    def classify(self, message: str) -> dict:
+
+class AiClient:
+    def __init__(self, api_key: str, model: str = "claude-haiku-4-5"):
+        self._client = Anthropic(api_key=api_key)
+        self._model = model
+
+    def decide(self, message: str, tasks: list[dict], pending: dict | None = None) -> dict:
+        """Le 'cerveau unique' : un seul appel qui classe l'intention, choisit la
+        tache cible, normalise les champs et redige la reponse en langage naturel."""
         today = date.today().isoformat()
+        system = DECIDE_PROMPT.format(
+            today=today,
+            importances=", ".join(IMPORTANCES),
+            categories=", ".join(CATEGORIES),
+            subcategories=", ".join(SUBCATEGORIES),
+            pending=json.dumps(pending, ensure_ascii=False) if pending else "(aucun)",
+            tasks=_format_tasks(tasks),
+        )
         response = self._client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=500,
-            system=CLASSIFY_PROMPT.format(today=today),
+            model=self._model,
+            max_tokens=700,
+            system=system,
             messages=[{"role": "user", "content": message}],
         )
         return _parse_json_response(response.content[0].text)
-
-    def extract_field(self, field: str, question: str, answer: str) -> str:
-        today = date.today().isoformat()
-        prompt = (
-            f'L utilisateur repondait a : "{question}"\n'
-            f'Sa reponse : "{answer}"\n'
-            f"Champ a extraire : {field}\n"
-            f"Aujourd'hui = {today}\n"
-            'Retourne UNIQUEMENT du JSON : {"value": "valeur ou vide"}\n'
-            'Pour "aucune", "non", "pas de", "skip" -> retourne {"value": ""}\n'
-            "Pour importance -> valide parmi : Haute, Moyenne, Basse\n"
-            "Pour category -> valide parmi : Conferences, Social, Code, Pro\n"
-            "Pour subcategory -> valide parmi : TSE, Labo\n"
-            "Pour due_date -> format YYYY-MM-DD"
-        )
-        response = self._client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=100,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        result = _parse_json_response(response.content[0].text)
-        return result.get("value", "")
-
-    def answer_query(self, query: str, tasks: list[dict]) -> str:
-        tasks_text = json.dumps(tasks, ensure_ascii=False, indent=2)
-        response = self._client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=500,
-            system=(
-                "Tu es un assistant de gestion de taches personnel. "
-                "Reponds en francais, de facon concise (5 lignes max)."
-            ),
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Question : {query}\n\nTaches :\n{tasks_text}",
-                }
-            ],
-        )
-        return response.content[0].text
 
     def generate_digest(self, tasks: list[dict]) -> str:
         if not tasks:
@@ -134,7 +130,7 @@ class AiClient:
 
         tasks_text = json.dumps(tasks, ensure_ascii=False, indent=2)
         response = self._client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-4-5",
             max_tokens=400,
             system=DIGEST_SYSTEM,
             messages=[{"role": "user", "content": tasks_text}],

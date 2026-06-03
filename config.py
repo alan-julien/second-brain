@@ -11,6 +11,7 @@ class Config:
     anthropic_api_key: str
     notion_token: str
     notion_database_id: str
+    anthropic_model: str = "claude-haiku-4-5"
     digest_hour: int = 8
     digest_minute: int = 0
 
@@ -31,6 +32,7 @@ def load_config() -> Config:
         anthropic_api_key=_required_env("ANTHROPIC_API_KEY"),
         notion_token=_required_env("NOTION_TOKEN"),
         notion_database_id=_required_env("NOTION_DATABASE_ID"),
+        anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
         digest_hour=int(os.getenv("DIGEST_HOUR", "8")),
         digest_minute=int(os.getenv("DIGEST_MINUTE", "0")),
     )

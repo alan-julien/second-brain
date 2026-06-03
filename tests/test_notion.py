@@ -6,6 +6,7 @@ from notion import NotionClient
 
 def _make_page() -> dict:
     return {
+        "id": "page-123",
         "properties": {
             "Nom": {"title": [{"text": {"content": "Ma tache"}}]},
             "Statut": {"select": {"name": "A faire"}},
@@ -115,6 +116,7 @@ def test_page_to_dict_extracts_fields():
 
         result = client._page_to_dict(_make_page())
 
+        assert result["id"] == "page-123"
         assert result["nom"] == "Ma tache"
         assert result["statut"] == "A faire"
         assert result["importance"] == "Haute"

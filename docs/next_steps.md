@@ -63,11 +63,15 @@ Creer un fichier `.env` a la racine du projet, sur le modele de `.env.example` :
 TELEGRAM_TOKEN=...
 TELEGRAM_USER_ID=...
 ANTHROPIC_API_KEY=...
+ANTHROPIC_MODEL=claude-haiku-4-5
 NOTION_TOKEN=...
 NOTION_DATABASE_ID=...
 DIGEST_HOUR=8
 DIGEST_MINUTE=0
 ```
+
+`ANTHROPIC_MODEL` est optionnel (defaut `claude-haiku-4-5`). Passer a `claude-sonnet-4-6` si le bot
+identifie mal les taches.
 
 Ne pas envoyer `.env` sur GitHub. Il contient des secrets et il est ignore par `.gitignore`.
 
@@ -97,14 +101,15 @@ Resultat attendu dans le terminal :
 Bot demarre
 ```
 
-Test Telegram conseille :
+Test Telegram conseille (conversation naturelle) :
 
-1. Envoyer `je dois preparer ma conference pour juin`.
-2. Repondre a la question d'importance.
-3. Repondre a la question de date limite.
-4. Repondre a la question de categorie.
-5. Verifier que la tache apparait dans Notion.
-6. Envoyer `quelles sont mes taches urgentes ?`.
+1. Envoyer `rappelle-moi de preparer ma conf pour juin, c'est important` -> le bot extrait nom +
+   importance et ne pose que les questions vraiment manquantes.
+2. Creer `Finir les lieux de la Saint-Jean`, puis envoyer `Lieux de la StJean : termine` -> doit
+   marquer la BONNE tache comme faite (matching semantique, pas exact).
+3. Envoyer une variante avec faute -> en cas de doute, le bot propose les candidates et demande laquelle.
+4. Verifier que la tache apparait / change de statut dans Notion.
+5. Envoyer `quelles sont mes taches urgentes ?`.
 
 ## 7. Deploiement Railway
 

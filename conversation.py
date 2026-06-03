@@ -1,10 +1,4 @@
 from dataclasses import dataclass
-from enum import Enum
-
-
-class ConversationMode(Enum):
-    IDLE = "idle"
-    CAPTURING = "capturing"
 
 
 @dataclass
@@ -18,9 +12,14 @@ class TaskDraft:
 
 @dataclass
 class ConversationState:
-    mode: ConversationMode = ConversationMode.IDLE
-    draft: TaskDraft | None = None
-    awaiting: str | None = None
+    """Contexte d'une conversation en attente.
+
+    `pending` est non-nul quand le bot a posé une question et attend la suite
+    (information manquante a la creation, ou desambiguisation d'une tache cible).
+    L'IA recoit ce contexte au tour suivant et reprend le fil.
+    """
+
+    pending: dict | None = None
 
 
 class ConversationManager:
@@ -32,20 +31,8 @@ class ConversationManager:
             self._states[user_id] = ConversationState()
         return self._states[user_id]
 
-    def start_capture(self, user_id: int, draft: TaskDraft, awaiting: str) -> None:
-        self._states[user_id] = ConversationState(
-            mode=ConversationMode.CAPTURING,
-            draft=draft,
-            awaiting=awaiting,
-        )
-
-    def update_field(self, user_id: int, field: str, value: str) -> TaskDraft:
-        state = self.get(user_id)
-        if state.draft is None:
-            state.draft = TaskDraft()
-        setattr(state.draft, field, value)
-        state.awaiting = None
-        return state.draft
+    def set_pending(self, user_id: int, pending: dict) -> None:
+        self._states[user_id] = ConversationState(pending=pending)
 
     def clear(self, user_id: int) -> None:
         self._states[user_id] = ConversationState()

@@ -19,6 +19,8 @@ class NotionClient:
             properties["Categorie"] = {"select": {"name": draft.category}}
         if draft.subcategory:
             properties["Sous-categorie"] = {"select": {"name": draft.subcategory}}
+        if draft.effort:
+            properties["Effort"] = {"select": {"name": draft.effort}}
 
         self._client.pages.create(
             parent={"database_id": self._db_id},
@@ -36,6 +38,7 @@ class NotionClient:
             "due_date": ("Date limite", {"date": {"start": value}}),
             "importance": ("Importance", {"select": {"name": value}}),
             "category": ("Categorie", {"select": {"name": value}}),
+            "effort": ("Effort", {"select": {"name": value}}),
         }
         if field not in field_map:
             return
@@ -63,6 +66,7 @@ class NotionClient:
             "date_limite": _date_value(props["Date limite"]),
             "categorie": _select_value(props["Categorie"]),
             "sous_categorie": _select_value(props["Sous-categorie"]),
+            "effort": _select_value(props["Effort"]),
         }
 
 

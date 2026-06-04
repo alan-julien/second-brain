@@ -8,6 +8,7 @@ class TaskDraft:
     due_date: str | None = None
     category: str | None = None
     subcategory: str | None = None
+    effort: str | None = None
 
 
 @dataclass

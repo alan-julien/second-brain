@@ -5,7 +5,7 @@ from datetime import time as dt_time
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
-from ai import AiClient, IMPORTANCES, CATEGORIES, SUBCATEGORIES
+from ai import AiClient, IMPORTANCES, CATEGORIES, SUBCATEGORIES, EFFORTS
 from config import load_config
 from conversation import ConversationManager, TaskDraft
 from notion import NotionClient
@@ -125,6 +125,8 @@ def _valid_update(field: str, value: str) -> bool:
         return value in IMPORTANCES
     if field == "category":
         return value in CATEGORIES
+    if field == "effort":
+        return value in EFFORTS
     if field == "due_date":
         return bool(_DATE_RE.match(value))
     return False
@@ -142,6 +144,7 @@ def _validated_draft(payload: dict) -> TaskDraft:
         due_date=due_date,
         category=payload.get("category") if payload.get("category") in CATEGORIES else None,
         subcategory=payload.get("subcategory") if payload.get("subcategory") in SUBCATEGORIES else None,
+        effort=payload.get("effort") if payload.get("effort") in EFFORTS else None,
     )
 
 

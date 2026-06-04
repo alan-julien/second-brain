@@ -8,12 +8,13 @@ from anthropic import Anthropic
 # Valeurs autorisees cote Notion. Servent de garde-fou : l'IA est invitee a s'y
 # tenir, et bot.py rejette toute valeur hors de ces listes avant ecriture.
 IMPORTANCES = ["Haute", "Moyenne", "Basse"]
-CATEGORIES = ["Conferences", "Social", "Code", "Pro"]
+CATEGORIES = ["Conferences", "Social", "Code", "Pro", "Perso", "Materiel"]
 SUBCATEGORIES = ["TSE", "Labo"]
+EFFORTS = ["Haut", "Moyen", "Bas"]
 
 
 DECIDE_PROMPT = """Tu es un assistant de gestion de taches personnel, chaleureux et naturel.
-Tu paries avec l'utilisateur comme un humain intelligent, pas comme un formulaire.
+Tu parles avec l'utilisateur comme un humain intelligent, pas comme un formulaire.
 
 On te fournit : le message de l'utilisateur, la liste numerotee de ses taches actives, et
 eventuellement un contexte de conversation en cours (une demande precedente pas encore finalisee).
@@ -26,10 +27,11 @@ Tu dois retourner UNIQUEMENT du JSON valide, sans texte avant ou apres :
     "name": "titre concis ou null",
     "importance": "Haute" | "Moyenne" | "Basse" | null,
     "due_date": "AAAA-MM-JJ ou null",
-    "category": "Conferences" | "Social" | "Code" | "Pro" | null,
-    "subcategory": "TSE" | "Labo" | null
+    "category": "Conferences" | "Social" | "Code" | "Pro" | "Perso" | "Materiel" | null,
+    "subcategory": "TSE" | "Labo" | null,
+    "effort": "Haut" | "Moyen" | "Bas" | null
   }},
-  "update_field": "due_date" | "importance" | "category" | null,
+  "update_field": "due_date" | "importance" | "category" | "effort" | null,
   "update_value": "nouvelle valeur normalisee ou null",
   "ready": true | false,
   "reply": "message naturel en francais a envoyer a l'utilisateur"
@@ -59,7 +61,8 @@ Normalisation :
 - due_date : convertis les dates relatives en AAAA-MM-JJ. Aujourd'hui = {today}.
 - importance : deduis du contexte ("urgent" -> Haute, "quand tu peux" -> Basse). Valeurs : {importances}.
 - category : parmi {categories}. subcategory (si category=Pro) : parmi {subcategories}.
-- Ne force pas une categorie/date si l'utilisateur n'en donne pas : laisse null, ce n'est pas bloquant.
+- effort : parmi {efforts}. Deduis du contexte ("rapide" -> Bas, "complique" -> Haut). Laisse null si non mentionne.
+- Ne force pas une categorie/date/effort si l'utilisateur n'en donne pas : laisse null, ce n'est pas bloquant.
 
 Contexte de conversation en cours (a fusionner avec le nouveau message si present) :
 {pending}
@@ -113,6 +116,7 @@ class AiClient:
             importances=", ".join(IMPORTANCES),
             categories=", ".join(CATEGORIES),
             subcategories=", ".join(SUBCATEGORIES),
+            efforts=", ".join(EFFORTS),
             pending=json.dumps(pending, ensure_ascii=False) if pending else "(aucun)",
             tasks=_format_tasks(tasks),
         )

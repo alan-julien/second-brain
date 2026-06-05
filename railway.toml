@@ -1,3 +1,4 @@
+# Railway conservé en fallback, mais le déploiement cible est Render (render.yaml)
 [build]
 builder = "NIXPACKS"
 

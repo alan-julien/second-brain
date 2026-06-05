@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: second-brain-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    plan: free
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: TELEGRAM_USER_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NOTION_TOKEN
+        sync: false
+      - key: NOTION_DATABASE_ID
+        sync: false
+      - key: WEBHOOK_BASE_URL
+        sync: false
+      - key: DIGEST_HOUR
+        value: "8"
+      - key: DIGEST_MINUTE
+        value: "0"

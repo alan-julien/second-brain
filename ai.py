@@ -83,7 +83,10 @@ def _parse_json_response(text: str) -> dict:
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", stripped, re.DOTALL)
     if fenced:
         stripped = fenced.group(1).strip()
-    return json.loads(stripped)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Réponse IA non JSON : {text[:200]}") from exc
 
 
 def _format_tasks(tasks: list[dict]) -> str:

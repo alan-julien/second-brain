@@ -41,8 +41,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def _handle(update: Update, text: str, user_id: int) -> None:
     """Flux 'cerveau unique' : un appel IA decide tout, puis Python valide et execute."""
     state = conversation_manager.get(user_id)
-    tasks = notion_client.query_active_tasks()
-    decision = ai_client.decide(text, tasks, state.pending)
+    try:
+        tasks = notion_client.query_active_tasks()
+        decision = ai_client.decide(text, tasks, state.pending)
+    except Exception as exc:
+        logger.error("Erreur lors du traitement du message: %s", exc, exc_info=True)
+        await update.message.reply_text("Désolé, une erreur est survenue. Réessaie dans un instant.")
+        return
 
     intent = decision.get("intent")
     reply = decision.get("reply") or "C'est note."
@@ -173,8 +178,20 @@ def main() -> None:
     digest_time = dt_time(hour=config.digest_hour, minute=config.digest_minute)
     app.job_queue.run_daily(_send_digest, time=digest_time)
 
-    logger.info("Bot demarre")
-    app.run_polling()
+    if config.webhook_base_url:
+        # Mode production (Render) : Telegram pousse les messages via HTTPS
+        webhook_url = f"{config.webhook_base_url}/{config.telegram_token}"
+        logger.info("Mode webhook — %s (port %s)", webhook_url, config.port)
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=config.port,
+            url_path=config.telegram_token,
+            webhook_url=webhook_url,
+        )
+    else:
+        # Mode développement local : le bot appelle Telegram en boucle
+        logger.info("Mode polling (local)")
+        app.run_polling()
 
 
 if __name__ == "__main__":

@@ -14,6 +14,8 @@ class Config:
     anthropic_model: str = "claude-haiku-4-5"
     digest_hour: int = 8
     digest_minute: int = 0
+    webhook_base_url: str = ""  # ex: https://monbot.onrender.com — vide = mode polling local
+    port: int = 8443
 
 
 def _required_env(name: str) -> str:
@@ -35,4 +37,6 @@ def load_config() -> Config:
         anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
         digest_hour=int(os.getenv("DIGEST_HOUR", "8")),
         digest_minute=int(os.getenv("DIGEST_MINUTE", "0")),
+        webhook_base_url=os.getenv("WEBHOOK_BASE_URL", ""),
+        port=int(os.getenv("PORT", "8443")),
     )

@@ -21,7 +21,8 @@ def test_valid_update_checks_enums_and_date():
     assert bot._valid_update("importance", "Haute") is True
     assert bot._valid_update("importance", "Critique") is False
     assert bot._valid_update("category", "Code") is True
-    assert bot._valid_update("category", "Perso") is False
+    assert bot._valid_update("category", "Perso") is True
+    assert bot._valid_update("category", "Inconnue") is False
     assert bot._valid_update("due_date", "2026-06-15") is True
     assert bot._valid_update("due_date", "demain") is False
     assert bot._valid_update("name", "x") is False  # champ non modifiable

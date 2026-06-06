@@ -65,8 +65,8 @@ class NotionClient:
             "importance": _select_value(props["Importance"]) or "",
             "date_limite": _date_value(props["Date limite"]),
             "categorie": _select_value(props["Categorie"]),
-            "sous_categorie": _select_value(props["Sous-categorie"]),
-            "effort": _select_value(props["Effort"]),
+            "sous_categorie": _select_value(props.get("Sous-categorie") or {}),
+            "effort": _select_value(props.get("Effort") or {}),
         }
 
 

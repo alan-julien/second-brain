@@ -14,6 +14,7 @@ def _make_page() -> dict:
             "Date limite": {"date": {"start": "2026-06-15"}},
             "Categorie": {"select": {"name": "Code"}},
             "Sous-categorie": {"select": None},
+            "Effort": {"select": {"name": "Moyen"}},
         }
     }
 
@@ -123,3 +124,17 @@ def test_page_to_dict_extracts_fields():
         assert result["date_limite"] == "2026-06-15"
         assert result["categorie"] == "Code"
         assert result["sous_categorie"] is None
+        assert result["effort"] == "Moyen"
+
+
+def test_page_to_dict_tolerates_missing_optional_properties():
+    with patch("notion.Client"):
+        client = NotionClient(token="fake", database_id="db123")
+        page = _make_page()
+        del page["properties"]["Sous-categorie"]
+        del page["properties"]["Effort"]
+
+        result = client._page_to_dict(page)
+
+        assert result["sous_categorie"] is None
+        assert result["effort"] is None

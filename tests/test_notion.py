@@ -138,3 +138,29 @@ def test_page_to_dict_tolerates_missing_optional_properties():
 
         assert result["sous_categorie"] is None
         assert result["effort"] is None
+
+
+def test_update_task_field_can_mark_blocked():
+    client, mock_instance = _make_client()
+
+    client.update_task_field("page-123", "status", "Bloque")
+
+    mock_instance.pages.update.assert_called_once_with(
+        page_id="page-123",
+        properties={"Statut": {"select": {"name": "Bloque"}}},
+    )
+
+
+def test_query_reference_tasks_includes_done_tasks_without_filter():
+    with patch("notion.Client") as MockClient:
+        mock_instance = MockClient.return_value
+        mock_instance.databases.query.return_value = {"results": [_make_page()]}
+        client = NotionClient(token="fake", database_id="db123")
+
+        result = client.query_reference_tasks()
+
+        mock_instance.databases.query.assert_called_once_with(
+            database_id="db123",
+            sorts=[{"property": "Date limite", "direction": "ascending"}],
+        )
+        assert result[0]["id"] == "page-123"

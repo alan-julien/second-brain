@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from ai import AiClient, _format_tasks, _parse_json_response
+from ai import AiClient, _clean_user_message, _format_tasks, _parse_json_response
 
 
 def test_parse_json_response_accepts_markdown_json_fence():
@@ -19,9 +19,9 @@ def test_format_tasks_numbers_from_one_and_hides_ids():
 
     text = _format_tasks(tasks)
 
-    assert text.startswith("1 | Tache A")
+    assert text.startswith("1 | Tache A | sans statut | Haute")
     assert "2 | Tache B" in text
-    assert "sans date" in text and "sans categorie" in text
+    assert "sans date" in text and "sans categorie" in text and "sans effort" in text
     assert "abc" not in text and "def" not in text  # les ID Notion ne fuitent jamais vers l'IA
 
 
@@ -41,3 +41,15 @@ def test_decide_parses_structured_decision():
         assert decision["intent"] == "complete_task"
         assert decision["target_ref"] == 2
         assert decision["ready"] is True
+
+
+def test_clean_user_message_drops_noise_lines_when_action_exists():
+    message = "Envoyer template soutenance rempli à Philippe Pro Labo, haute importance faible effort fin de semaine\n\nTest\nListe taches"
+
+    cleaned = _clean_user_message(message)
+
+    assert cleaned == "Envoyer template soutenance rempli à Philippe Pro Labo, haute importance faible effort fin de semaine"
+
+
+def test_clean_user_message_keeps_single_query_command():
+    assert _clean_user_message("Liste taches") == "Liste taches"

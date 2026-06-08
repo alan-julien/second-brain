@@ -39,6 +39,7 @@ class NotionClient:
             "importance": ("Importance", {"select": {"name": value}}),
             "category": ("Categorie", {"select": {"name": value}}),
             "effort": ("Effort", {"select": {"name": value}}),
+            "status": ("Statut", {"select": {"name": value}}),
         }
         if field not in field_map:
             return
@@ -52,6 +53,21 @@ class NotionClient:
         response = self._client.databases.query(
             database_id=self._db_id,
             filter={"property": "Statut", "select": {"does_not_equal": "Fait"}},
+            sorts=[{"property": "Date limite", "direction": "ascending"}],
+        )
+        return [self._page_to_dict(page) for page in response["results"]]
+
+    def query_reference_tasks(self) -> list[dict]:
+        """Retourne assez de contexte pour cibler une tache.
+
+        Les actions de correction peuvent viser une tache deja marquee Fait
+        (ex. « finalement marque-la bloquee »). Le digest reste base sur
+        query_active_tasks(), mais le flux conversationnel donne a l'IA une
+        liste de reference incluant les taches terminees afin que Python puisse
+        remapper un numero vers l'ID Notion reel.
+        """
+        response = self._client.databases.query(
+            database_id=self._db_id,
             sorts=[{"property": "Date limite", "direction": "ascending"}],
         )
         return [self._page_to_dict(page) for page in response["results"]]

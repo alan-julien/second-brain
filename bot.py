@@ -5,7 +5,7 @@ from datetime import time as dt_time
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
-from ai import AiClient, IMPORTANCES, CATEGORIES, SUBCATEGORIES, EFFORTS
+from ai import AiClient, IMPORTANCES, CATEGORIES, SUBCATEGORIES, EFFORTS, STATUSES
 from config import load_config
 from conversation import ConversationManager, TaskDraft
 from notion import NotionClient
@@ -42,7 +42,7 @@ async def _handle(update: Update, text: str, user_id: int) -> None:
     """Flux 'cerveau unique' : un appel IA decide tout, puis Python valide et execute."""
     state = conversation_manager.get(user_id)
     try:
-        tasks = notion_client.query_active_tasks()
+        tasks = notion_client.query_reference_tasks()
         decision = ai_client.decide(text, tasks, state.pending)
     except Exception as exc:
         logger.error("Erreur lors du traitement du message: %s", exc, exc_info=True)
@@ -132,6 +132,8 @@ def _valid_update(field: str, value: str) -> bool:
         return value in CATEGORIES
     if field == "effort":
         return value in EFFORTS
+    if field == "status":
+        return value in STATUSES
     if field == "due_date":
         return bool(_DATE_RE.match(value))
     return False

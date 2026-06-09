@@ -11,8 +11,8 @@ IMPORTANCES = ["Haute", "Moyenne", "Basse"]
 CATEGORIES = ["Conferences", "Social", "Code", "Pro", "Perso", "Materiel"]
 SUBCATEGORIES = ["TSE", "Labo"]
 EFFORTS = ["Haut", "Moyen", "Bas"]
-STATUSES = ["A faire", "En cours", "Bloque", "Fait"]
 
+STATUSES = ["A faire", "En cours", "Bloque", "Fait"]
 
 DECIDE_PROMPT = """Tu es un assistant de gestion de taches personnel, chaleureux et naturel.
 Tu parles avec l'utilisateur comme un humain intelligent, pas comme un formulaire.
@@ -69,7 +69,9 @@ Normalisation :
 - Ne confonds jamais importance et effort : "important faible effort" => importance=Haute, effort=Bas.
 - category : parmi {categories}. "conference" ou "conférence" => Conferences. subcategory (si category=Pro) : parmi {subcategories}.
 - effort : parmi {efforts}. Deduis du contexte ("faible", "rapide", "fort faible" -> Bas ; "moyen" -> Moyen ; "complique" -> Haut). Laisse null si non mentionne.
+
 - status : parmi {statuses}. "en cours", "commence", "commencé", "demarre", "démarré" => En cours ; "bloque", "bloquee", "bloqué", "bloquée" => Bloque ; "pas bloque" / "pas bloqué" n'est PAS Bloque ; "fait", "termine", "ok" => Fait.
+
 - Ne force pas une categorie/date/effort si l'utilisateur n'en donne pas : laisse null, ce n'est pas bloquant.
 
 Contexte de conversation en cours (a fusionner avec le nouveau message si present) :

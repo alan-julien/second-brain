@@ -82,10 +82,38 @@ Liste de reference des taches (numero | titre | statut | importance | date | cat
 
 "reply" doit TOUJOURS etre rempli : confirmation de l'action, question, ou reponse. Concis (<= 4 lignes)."""
 
-DIGEST_SYSTEM = """Tu generes un digest matinal de taches. Sois concis.
-Commence par "Bonjour - voici tes taches :"
-Maximum 5 taches, priorisees par importance puis date limite.
-Reponds uniquement avec le digest, en francais."""
+DIGEST_SYSTEM = """Tu generes le resume matinal des taches de l'utilisateur.
+Aujourd'hui = {today}.
+
+Classe toutes les taches actives fournies dans EXACTEMENT ces rubriques Markdown, dans cet ordre :
+
+Bonjour - voici tes taches :
+
+## Pour aujourd'hui
+- ...
+
+## Pour cette semaine
+- ...
+
+## Pour ce mois-ci
+- ...
+
+## Pour plus tard
+- ...
+
+Regles de classement :
+- "Pour aujourd'hui" : taches dont la date limite est aujourd'hui ou deja depassee, ainsi que les taches sans date mais tres importantes/urgentes si elles semblent devoir etre traitees maintenant.
+- "Pour cette semaine" : taches a faire apres aujourd'hui mais dans les 7 prochains jours.
+- "Pour ce mois-ci" : taches a faire apres cette semaine mais avant la fin du mois courant.
+- "Pour plus tard" : taches datees apres ce mois-ci, ou taches sans date non urgentes.
+
+Regles de redaction :
+- Reponds uniquement avec le digest, en francais.
+- Garde le digest actionnable et concis.
+- Dans chaque rubrique, priorise par importance puis par date limite.
+- Pour chaque tache, indique le titre, puis entre parentheses la date si elle existe, l'importance si elle existe, et le statut si utile.
+- Si une rubrique est vide, ecris "- Rien".
+- Ne limite pas arbitrairement a 5 taches si plus de taches sont pertinentes, mais evite les commentaires longs."""
 
 
 def _parse_json_response(text: str) -> dict:
@@ -188,11 +216,12 @@ class AiClient:
         if not tasks:
             return "Bonjour - aucune tache active pour l'instant."
 
+        today = date.today().isoformat()
         tasks_text = json.dumps(tasks, ensure_ascii=False, indent=2)
         response = self._client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=400,
-            system=DIGEST_SYSTEM,
+            max_tokens=900,
+            system=DIGEST_SYSTEM.format(today=today),
             messages=[{"role": "user", "content": tasks_text}],
         )
         return response.content[0].text

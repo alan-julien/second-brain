@@ -23,6 +23,9 @@ def test_valid_update_checks_enums_and_date():
     assert bot._valid_update("category", "Code") is True
     assert bot._valid_update("category", "Perso") is True
     assert bot._valid_update("category", "Inconnue") is False
+    assert bot._valid_update("status", "Bloque") is True
+    assert bot._valid_update("status", "En cours") is True
+    assert bot._valid_update("status", "Archive") is False
     assert bot._valid_update("due_date", "2026-06-15") is True
     assert bot._valid_update("due_date", "demain") is False
     assert bot._valid_update("name", "x") is False  # champ non modifiable
@@ -59,3 +62,27 @@ def test_validated_draft_keeps_valid_values():
     assert draft.due_date == "2026-06-15"
     assert draft.category == "Pro"
     assert draft.subcategory == "TSE"
+
+
+def test_status_from_message_understands_in_progress_not_blocked():
+    assert bot._status_from_message("NeuralProphet en cours") == "En cours"
+    assert bot._status_from_message("Neurao prophète commencé, pas bloqué") == "En cours"
+
+
+def test_status_from_message_understands_not_blocked_without_started_signal():
+    assert bot._status_from_message("NeuralProphet pas bloqué") == "A faire"
+
+
+def test_apply_status_text_hints_overrides_ai_blocked_confusion():
+    decision = {
+        "intent": "update_task",
+        "update_field": "status",
+        "update_value": "Bloque",
+        "target_ref": 9,
+        "ready": True,
+    }
+
+    corrected = bot._apply_status_text_hints("NeuralProphet en cours", decision)
+
+    assert corrected["update_value"] == "En cours"
+    assert decision["update_value"] == "Bloque"

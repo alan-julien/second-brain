@@ -1,11 +1,12 @@
 import logging
 import re
+import unicodedata
 from datetime import time as dt_time
 
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
-from ai import AiClient, IMPORTANCES, CATEGORIES, SUBCATEGORIES, EFFORTS
+from ai import AiClient, IMPORTANCES, CATEGORIES, SUBCATEGORIES, EFFORTS, STATUSES
 from config import load_config
 from conversation import ConversationManager, TaskDraft
 from notion import NotionClient
@@ -42,8 +43,9 @@ async def _handle(update: Update, text: str, user_id: int) -> None:
     """Flux 'cerveau unique' : un appel IA decide tout, puis Python valide et execute."""
     state = conversation_manager.get(user_id)
     try:
-        tasks = notion_client.query_active_tasks()
+        tasks = notion_client.query_reference_tasks()
         decision = ai_client.decide(text, tasks, state.pending)
+        decision = _apply_status_text_hints(text, decision)
     except Exception as exc:
         logger.error("Erreur lors du traitement du message: %s", exc, exc_info=True)
         await update.message.reply_text("Désolé, une erreur est survenue. Réessaie dans un instant.")
@@ -114,6 +116,44 @@ async def _do_task_action(
     await update.message.reply_text(reply)
 
 
+def _apply_status_text_hints(message: str, decision: dict) -> dict:
+    """Corrige deterministiquement les confusions de statut les plus risquées.
+
+    L'IA peut confondre « en cours » avec « bloque » parce que le prompt parle de
+    « contexte de conversation en cours ». Avant toute ecriture Notion, Python
+    force donc le statut explicitement exprime par l'utilisateur.
+    """
+    if decision.get("intent") != "update_task" or decision.get("update_field") != "status":
+        return decision
+
+    explicit_status = _status_from_message(message)
+    if explicit_status is None:
+        return decision
+
+    return {**decision, "update_value": explicit_status}
+
+
+def _status_from_message(message: str) -> str | None:
+    text = _normalize_text(message)
+    # Priorite a l'etat positif : « commence, pas bloque » doit rester En cours.
+    if "en cours" in text or re.search(r"\b(commence|demarre|lance)\w*\b", text):
+        return "En cours"
+    if "pas bloque" in text or re.search(r"\bdebloqu\w*\b", text):
+        return "A faire"
+    if re.search(r"\bbloqu\w*\b", text):
+        return "Bloque"
+    if re.search(r"\b(fait|fini|termine|ok)\b", text):
+        return "Fait"
+    return None
+
+
+def _normalize_text(text: str) -> str:
+    without_accents = "".join(
+        char for char in unicodedata.normalize("NFD", text.lower()) if unicodedata.category(char) != "Mn"
+    )
+    return re.sub(r"[^a-z0-9 ]+", " ", without_accents)
+
+
 def _resolve_ref(target_ref, tasks: list[dict]) -> dict | None:
     """Remappe le numero de reference (1-based) renvoye par l'IA vers la tache reelle."""
     try:
@@ -132,6 +172,8 @@ def _valid_update(field: str, value: str) -> bool:
         return value in CATEGORIES
     if field == "effort":
         return value in EFFORTS
+    if field == "status":
+        return value in STATUSES
     if field == "due_date":
         return bool(_DATE_RE.match(value))
     return False

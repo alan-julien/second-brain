@@ -140,14 +140,14 @@ def test_page_to_dict_tolerates_missing_optional_properties():
         assert result["effort"] is None
 
 
-def test_update_task_field_can_mark_blocked():
+def test_update_task_field_can_mark_status():
     client, mock_instance = _make_client()
 
-    client.update_task_field("page-123", "status", "Bloque")
+    client.update_task_field("page-123", "status", "En cours")
 
     mock_instance.pages.update.assert_called_once_with(
         page_id="page-123",
-        properties={"Statut": {"select": {"name": "Bloque"}}},
+        properties={"Statut": {"select": {"name": "En cours"}}},
     )
 
 

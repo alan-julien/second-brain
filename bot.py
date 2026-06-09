@@ -2,6 +2,7 @@ import logging
 import re
 import unicodedata
 from datetime import time as dt_time
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
@@ -217,11 +218,15 @@ def main() -> None:
     app = Application.builder().token(config.telegram_token).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    digest_time = dt_time(hour=config.digest_hour, minute=config.digest_minute)
+    digest_time = dt_time(
+        hour=config.digest_hour,
+        minute=config.digest_minute,
+        tzinfo=ZoneInfo(config.digest_timezone),
+    )
     app.job_queue.run_daily(_send_digest, time=digest_time)
 
     if config.webhook_base_url:
-        # Mode production (Render) : Telegram pousse les messages via HTTPS
+        # Mode production (Render/Railway) : Telegram pousse les messages via HTTPS
         webhook_url = f"{config.webhook_base_url}/{config.telegram_token}"
         logger.info("Mode webhook — %s (port %s)", webhook_url, config.port)
         app.run_webhook(

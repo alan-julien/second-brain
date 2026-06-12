@@ -15,6 +15,13 @@ EFFORTS = ["Haut", "Moyen", "Bas"]
 STATUSES = ["A faire", "En cours", "Bloque", "Fait"]
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+SUPPORTED_MODELS = {
+    DEFAULT_MODEL,
+    "claude-haiku-4-5",
+    "claude-sonnet-4-6",
+    "claude-opus-4-8",
+    "claude-fable-5",
+}
 MODEL_ALIASES = {
     "claude-haiku-4-5": DEFAULT_MODEL,
     "claude-3-5-haiku-latest": DEFAULT_MODEL,
@@ -189,8 +196,12 @@ def _format_tasks(tasks: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _normalize_model(model: str) -> str:
-    return MODEL_ALIASES.get(model, model)
+def _normalize_model(model: str | None) -> str:
+    candidate = (model or DEFAULT_MODEL).strip()
+    candidate = MODEL_ALIASES.get(candidate, candidate)
+    if candidate not in SUPPORTED_MODELS:
+        return DEFAULT_MODEL
+    return candidate
 
 
 def _looks_like_model_error(exc: Exception) -> bool:

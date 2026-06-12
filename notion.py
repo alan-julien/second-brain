@@ -1,6 +1,15 @@
 from notion_client import Client
 
 
+TITLE_FIELDS = ("Nom", "Name", "Tache", "Tâche", "Task")
+STATUS_FIELDS = ("Statut", "Status")
+IMPORTANCE_FIELDS = ("Importance", "Priorite", "Priorité", "Priority")
+DATE_FIELDS = ("Date limite", "Date Limite", "Deadline", "Due date", "Due")
+CATEGORY_FIELDS = ("Categorie", "Catégorie", "Category")
+SUBCATEGORY_FIELDS = ("Sous-categorie", "Sous-catégorie", "Subcategory")
+EFFORT_FIELDS = ("Effort",)
+
+
 class NotionClient:
     def __init__(self, token: str, database_id: str):
         self._client = Client(auth=token)
@@ -50,12 +59,12 @@ class NotionClient:
         )
 
     def query_active_tasks(self) -> list[dict]:
-        response = self._client.databases.query(
-            database_id=self._db_id,
-            filter={"property": "Statut", "select": {"does_not_equal": "Fait"}},
-            sorts=[{"property": "Date limite", "direction": "ascending"}],
-        )
-        return [self._page_to_dict(page) for page in response["results"]]
+        # Filtrer/trier côté Python évite qu'un changement de schéma Notion
+        # (colonne renommée ou absente) casse tout le bot au moment de recevoir
+        # un message Telegram.
+        tasks = [self._page_to_dict(page) for page in self._query_pages()]
+        active_tasks = [task for task in tasks if task.get("statut") != "Fait"]
+        return _sort_tasks_by_due_date(active_tasks)
 
     def query_reference_tasks(self) -> list[dict]:
         """Retourne assez de contexte pour cibler une tache.
@@ -66,24 +75,45 @@ class NotionClient:
         liste de reference incluant les taches terminees afin que Python puisse
         remapper un numero vers l'ID Notion reel.
         """
-        response = self._client.databases.query(
-            database_id=self._db_id,
-            sorts=[{"property": "Date limite", "direction": "ascending"}],
-        )
-        return [self._page_to_dict(page) for page in response["results"]]
+        tasks = [self._page_to_dict(page) for page in self._query_pages()]
+        return _sort_tasks_by_due_date(tasks)
+
+    def _query_pages(self) -> list[dict]:
+        results = []
+        start_cursor = None
+        while True:
+            kwargs = {"database_id": self._db_id}
+            if start_cursor:
+                kwargs["start_cursor"] = start_cursor
+            response = self._client.databases.query(**kwargs)
+            results.extend(response.get("results", []))
+            if not response.get("has_more"):
+                return results
+            start_cursor = response.get("next_cursor")
 
     def _page_to_dict(self, page: dict) -> dict:
-        props = page["properties"]
+        props = page.get("properties", {})
         return {
             "id": page["id"],
-            "nom": _title_value(props["Nom"]),
-            "statut": _select_value(props["Statut"]) or "",
-            "importance": _select_value(props["Importance"]) or "",
-            "date_limite": _date_value(props["Date limite"]),
-            "categorie": _select_value(props["Categorie"]),
-            "sous_categorie": _select_value(props.get("Sous-categorie") or {}),
-            "effort": _select_value(props.get("Effort") or {}),
+            "nom": _title_value(_first_prop(props, TITLE_FIELDS)),
+            "statut": _select_value(_first_prop(props, STATUS_FIELDS)) or "",
+            "importance": _select_value(_first_prop(props, IMPORTANCE_FIELDS)) or "",
+            "date_limite": _date_value(_first_prop(props, DATE_FIELDS)),
+            "categorie": _select_value(_first_prop(props, CATEGORY_FIELDS)),
+            "sous_categorie": _select_value(_first_prop(props, SUBCATEGORY_FIELDS)),
+            "effort": _select_value(_first_prop(props, EFFORT_FIELDS)),
         }
+
+
+def _first_prop(props: dict, names: tuple[str, ...]) -> dict:
+    for name in names:
+        if name in props:
+            return props[name] or {}
+    return {}
+
+
+def _sort_tasks_by_due_date(tasks: list[dict]) -> list[dict]:
+    return sorted(tasks, key=lambda task: task.get("date_limite") or "9999-12-31")
 
 
 def _title_value(property_value: dict) -> str:

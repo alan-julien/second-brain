@@ -14,6 +14,11 @@ EFFORTS = ["Haut", "Moyen", "Bas"]
 
 STATUSES = ["A faire", "En cours", "Bloque", "Fait"]
 
+DEFAULT_MODEL = "claude-3-5-haiku-latest"
+LEGACY_MODEL_ALIASES = {
+    "claude-haiku-4-5": DEFAULT_MODEL,
+}
+
 DECIDE_PROMPT = """Tu es un assistant de gestion de taches personnel, chaleureux et naturel.
 Tu parles avec l'utilisateur comme un humain intelligent, pas comme un formulaire.
 
@@ -127,7 +132,6 @@ def _parse_json_response(text: str) -> dict:
         raise ValueError(f"Réponse IA non JSON : {text[:200]}") from exc
 
 
-
 _NOISE_LINES = {
     "test",
     "tests",
@@ -184,10 +188,38 @@ def _format_tasks(tasks: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _normalize_model(model: str) -> str:
+    return LEGACY_MODEL_ALIASES.get(model, model)
+
+
+def _looks_like_model_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "model" in message and any(marker in message for marker in ("not_found", "not found", "invalid", "does not exist"))
+
+
 class AiClient:
-    def __init__(self, api_key: str, model: str = "claude-haiku-4-5"):
+    def __init__(self, api_key: str, model: str = DEFAULT_MODEL):
         self._client = Anthropic(api_key=api_key)
-        self._model = model
+        self._model = _normalize_model(model)
+        self._fallback_model = DEFAULT_MODEL
+
+    def _create_message(self, *, max_tokens: int, system: str, messages: list[dict]):
+        try:
+            return self._client.messages.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+            )
+        except Exception as exc:
+            if self._model != self._fallback_model and _looks_like_model_error(exc):
+                return self._client.messages.create(
+                    model=self._fallback_model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=messages,
+                )
+            raise
 
     def decide(self, message: str, tasks: list[dict], pending: dict | None = None) -> dict:
         """Le 'cerveau unique' : un seul appel qui classe l'intention, choisit la
@@ -204,8 +236,7 @@ class AiClient:
             tasks=_format_tasks(tasks),
         )
         message = _clean_user_message(message)
-        response = self._client.messages.create(
-            model=self._model,
+        response = self._create_message(
             max_tokens=700,
             system=system,
             messages=[{"role": "user", "content": message}],
@@ -218,8 +249,7 @@ class AiClient:
 
         today = date.today().isoformat()
         tasks_text = json.dumps(tasks, ensure_ascii=False, indent=2)
-        response = self._client.messages.create(
-            model="claude-haiku-4-5",
+        response = self._create_message(
             max_tokens=900,
             system=DIGEST_SYSTEM.format(today=today),
             messages=[{"role": "user", "content": tasks_text}],

@@ -37,7 +37,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     text = update.message.text or ""
-    await _handle(update, text, user_id)
+    try:
+        await _handle(update, text, user_id)
+    except Exception as exc:
+        await _reply_technical_error(update, exc)
 
 
 async def _handle(update: Update, text: str, user_id: int) -> None:
@@ -48,8 +51,7 @@ async def _handle(update: Update, text: str, user_id: int) -> None:
         decision = ai_client.decide(text, tasks, state.pending)
         decision = _apply_status_text_hints(text, decision)
     except Exception as exc:
-        logger.error("Erreur lors du traitement du message: %s", exc, exc_info=True)
-        await update.message.reply_text("Désolé, une erreur est survenue. Réessaie dans un instant.")
+        await _reply_technical_error(update, exc)
         return
 
     intent = decision.get("intent")
@@ -72,6 +74,25 @@ async def _handle(update: Update, text: str, user_id: int) -> None:
     # query / smalltalk : l'IA a deja redige la reponse a partir de la liste fournie.
     conversation_manager.clear(user_id)
     await update.message.reply_text(reply)
+
+
+async def _reply_technical_error(update: Update, exc: Exception) -> None:
+    logger.error("Erreur lors du traitement du message: %s", exc, exc_info=True)
+    details = _safe_error_details(exc)
+    await update.message.reply_text(f"Erreur technique: {details}")
+
+
+def _safe_error_details(exc: Exception) -> str:
+    details = f"{exc.__class__.__name__}: {exc}"
+    for secret in (
+        config.telegram_token,
+        config.anthropic_api_key,
+        config.notion_token,
+        config.notion_database_id,
+    ):
+        if secret:
+            details = details.replace(secret, "[secret]")
+    return details[:700]
 
 
 async def _do_new_task(update: Update, user_id: int, decision: dict, reply: str) -> None:

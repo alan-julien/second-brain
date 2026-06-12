@@ -14,9 +14,10 @@ EFFORTS = ["Haut", "Moyen", "Bas"]
 
 STATUSES = ["A faire", "En cours", "Bloque", "Fait"]
 
-DEFAULT_MODEL = "claude-3-5-haiku-latest"
-LEGACY_MODEL_ALIASES = {
+DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+MODEL_ALIASES = {
     "claude-haiku-4-5": DEFAULT_MODEL,
+    "claude-3-5-haiku-latest": DEFAULT_MODEL,
 }
 
 DECIDE_PROMPT = """Tu es un assistant de gestion de taches personnel, chaleureux et naturel.
@@ -189,7 +190,7 @@ def _format_tasks(tasks: list[dict]) -> str:
 
 
 def _normalize_model(model: str) -> str:
-    return LEGACY_MODEL_ALIASES.get(model, model)
+    return MODEL_ALIASES.get(model, model)
 
 
 def _looks_like_model_error(exc: Exception) -> bool:

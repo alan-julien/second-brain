@@ -1,7 +1,7 @@
 import logging
 import re
 import unicodedata
-from datetime import time as dt_time
+from datetime import datetime, time as dt_time
 from zoneinfo import ZoneInfo
 
 from telegram import Update
@@ -25,6 +25,56 @@ notion_client = NotionClient(
 )
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_CONFIRMATION_RE = re.compile(r"\b(oui|yes|ok|confirme|c'est ca|cest ca|exact|exactement)\b")
+_COMPLETION_RE = re.compile(r"\b(fait|faits|faite|faites|fini|finie|finis|finies|termine|terminee|termines|terminees|ok)\b")
+_OVERDUE_ACTION_RE = re.compile(r"\b(supprime|supprimer|enleve|enlever|retire|retirer|efface|effacer|termine|terminer|marque|marquer)\w*\b")
+
+_TASK_STOPWORDS = {
+    "a",
+    "au",
+    "aux",
+    "de",
+    "des",
+    "du",
+    "la",
+    "le",
+    "les",
+    "l",
+    "un",
+    "une",
+    "pour",
+    "avec",
+    "chez",
+    "dans",
+    "sur",
+    "et",
+    "ou",
+    "faire",
+    "fait",
+    "faite",
+    "fini",
+    "finie",
+    "termine",
+    "terminee",
+    "terminer",
+    "marquer",
+    "marque",
+    "supprimer",
+    "supprime",
+    "retirer",
+    "retire",
+    "envoyer",
+    "venir",
+    "chercher",
+    "ramener",
+    "prendre",
+    "demander",
+    "appeler",
+    "contacter",
+    "repondre",
+    "reserver",
+    "organiser",
+}
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -44,10 +94,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def _handle(update: Update, text: str, user_id: int) -> None:
-    """Flux 'cerveau unique' : un appel IA decide tout, puis Python valide et execute."""
+    """Flux 'cerveau unique' : Python execute les cas a risque, l'IA gere le reste."""
     state = conversation_manager.get(user_id)
     try:
         tasks = notion_client.query_reference_tasks()
+        if await _try_handle_deterministic_task_action(update, user_id, text, tasks, state.pending):
+            return
+
         decision = ai_client.decide(text, tasks, state.pending)
         decision = _apply_status_text_hints(text, decision)
     except Exception as exc:
@@ -93,6 +146,190 @@ def _safe_error_details(exc: Exception) -> str:
         if secret:
             details = details.replace(secret, "[secret]")
     return details[:700]
+
+
+async def _try_handle_deterministic_task_action(
+    update: Update, user_id: int, text: str, tasks: list[dict], pending: dict | None
+) -> bool:
+    """Execute les actions simples et dangereuses sans laisser l'IA tergiverser.
+
+    Cas couverts :
+    - « supprime les 3 en retard » : marque les taches en retard comme Fait.
+    - « Vigne rouge et Castelli terminé » : complete plusieurs taches en une fois.
+    - « oui » apres une confirmation multi-taches : execute vraiment l'action.
+    """
+    normalized = _normalize_text(text)
+
+    if pending and pending.get("intent") == "bulk_complete" and _is_confirmation(normalized):
+        selected = _tasks_from_pending(pending, tasks)
+        if selected:
+            _complete_tasks(selected)
+            conversation_manager.clear(user_id)
+            await update.message.reply_text(_completed_reply(selected))
+            return True
+
+    overdue = _overdue_tasks_to_complete(normalized, tasks)
+    if overdue:
+        _complete_tasks(overdue)
+        conversation_manager.clear(user_id)
+        await update.message.reply_text(_completed_reply(overdue, prefix="J'ai retire les taches en retard de ta liste active"))
+        return True
+
+    matched = _explicit_completed_tasks(normalized, tasks)
+    if len(matched) >= 1:
+        _complete_tasks(matched)
+        conversation_manager.clear(user_id)
+        await update.message.reply_text(_completed_reply(matched))
+        return True
+
+    return False
+
+
+def _complete_tasks(tasks: list[dict]) -> None:
+    seen_ids = set()
+    for task in tasks:
+        task_id = task.get("id")
+        if not task_id or task_id in seen_ids:
+            continue
+        notion_client.complete_task(task_id)
+        seen_ids.add(task_id)
+
+
+def _completed_reply(tasks: list[dict], prefix: str = "J'ai marque comme terminee") -> str:
+    names = [task.get("nom", "").strip() for task in tasks if task.get("nom")]
+    if not names:
+        return "C'est fait."
+    if len(names) == 1:
+        return f"{prefix} « {names[0]} ». ✓"
+
+    bullet_list = "\n".join(f"- {name}" for name in names)
+    return f"{prefix} ces {len(names)} taches :\n{bullet_list}\n✓"
+
+
+def _tasks_from_pending(pending: dict, tasks: list[dict]) -> list[dict]:
+    pending_ids = set(pending.get("target_ids") or [])
+    if pending_ids:
+        return [task for task in tasks if task.get("id") in pending_ids and task.get("statut") != "Fait"]
+
+    refs = pending.get("target_refs") or []
+    resolved = [_resolve_ref(ref, tasks) for ref in refs]
+    return [task for task in resolved if task and task.get("statut") != "Fait"]
+
+
+def _overdue_tasks_to_complete(normalized_message: str, tasks: list[dict]) -> list[dict]:
+    if "retard" not in normalized_message or not _OVERDUE_ACTION_RE.search(normalized_message):
+        return []
+
+    overdue = _active_overdue_tasks(tasks)
+    if not overdue:
+        return []
+
+    requested_count = _requested_count(normalized_message)
+    if requested_count is None:
+        return overdue
+
+    return overdue[:requested_count] if requested_count > 0 else []
+
+
+def _active_overdue_tasks(tasks: list[dict]) -> list[dict]:
+    today = _today_iso()
+    return [
+        task
+        for task in tasks
+        if task.get("statut") != "Fait"
+        and task.get("date_limite")
+        and task["date_limite"] < today
+    ]
+
+
+def _today_iso() -> str:
+    try:
+        return datetime.now(ZoneInfo(config.digest_timezone)).date().isoformat()
+    except Exception:
+        return datetime.now().date().isoformat()
+
+
+def _requested_count(normalized_message: str) -> int | None:
+    match = re.search(r"\b(\d{1,2})\b", normalized_message)
+    if match:
+        return int(match.group(1))
+
+    words = {
+        "un": 1,
+        "une": 1,
+        "deux": 2,
+        "trois": 3,
+        "quatre": 4,
+        "cinq": 5,
+        "six": 6,
+        "sept": 7,
+        "huit": 8,
+        "neuf": 9,
+        "dix": 10,
+    }
+    for word, value in words.items():
+        if re.search(rf"\b{word}\b", normalized_message):
+            return value
+    return None
+
+
+def _explicit_completed_tasks(normalized_message: str, tasks: list[dict]) -> list[dict]:
+    if not _COMPLETION_RE.search(normalized_message):
+        return []
+    if _looks_like_question(normalized_message):
+        return []
+    return _matching_active_tasks(normalized_message, tasks)
+
+
+def _looks_like_question(normalized_message: str) -> bool:
+    return normalized_message.startswith(("est ce que", "est-ce que", "quelles", "quelle", "quels", "quel"))
+
+
+def _matching_active_tasks(normalized_message: str, tasks: list[dict]) -> list[dict]:
+    message_tokens = set(_tokenize(normalized_message))
+    if not message_tokens:
+        return []
+
+    matches: list[dict] = []
+    for task in tasks:
+        if task.get("statut") == "Fait":
+            continue
+        title_tokens = set(_task_title_tokens(task.get("nom", "")))
+        if not title_tokens:
+            continue
+
+        overlap = title_tokens & message_tokens
+        if _is_confident_task_match(overlap, title_tokens):
+            matches.append(task)
+
+    return matches
+
+
+def _is_confident_task_match(overlap: set[str], title_tokens: set[str]) -> bool:
+    if len(overlap) >= 2:
+        return True
+    if not overlap:
+        return False
+
+    token = next(iter(overlap))
+    # Un nom propre ou mot distinctif suffit pour les taches courtes :
+    # « Castelli termine », « Charlie termine », etc.
+    if len(token) >= 6 and len(title_tokens) <= 4:
+        return True
+
+    return len(title_tokens) == 1 and len(token) >= 4
+
+
+def _task_title_tokens(title: str) -> list[str]:
+    return [token for token in _tokenize(_normalize_text(title)) if token not in _TASK_STOPWORDS and len(token) >= 3]
+
+
+def _tokenize(normalized_text: str) -> list[str]:
+    return [token for token in normalized_text.split() if token]
+
+
+def _is_confirmation(normalized_message: str) -> bool:
+    return bool(_CONFIRMATION_RE.search(normalized_message))
 
 
 async def _do_new_task(update: Update, user_id: int, decision: dict, reply: str) -> None:
@@ -223,6 +460,8 @@ def _pending_from(decision: dict) -> dict:
         "intent": decision.get("intent"),
         "draft": decision.get("draft"),
         "target_ref": decision.get("target_ref"),
+        "target_refs": decision.get("target_refs"),
+        "target_ids": decision.get("target_ids"),
         "update_field": decision.get("update_field"),
         "update_value": decision.get("update_value"),
         "last_question": decision.get("reply"),
